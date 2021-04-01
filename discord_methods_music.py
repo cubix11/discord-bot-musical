@@ -11,9 +11,6 @@ from youtube_title_parse import get_artist_title
 from lyricsgenius import Genius
 from env import env
 from db import client
-db = client['discordbot_queues']
-
-api = Genius(env['GENIUS_ACCESS_TOKEN'])
 
 
 class Music(commands.Cog):
@@ -35,6 +32,8 @@ class Music(commands.Cog):
         self.place = 0
         self.go = None
         self.queue = None
+        self.api = Genius(env['GENIUS_ACCESS_TOKEN'])
+        self.db = client['discordbot_queues']
 
     @commands.command(brief='Adds song to queue', description='Adds song to queue')
     async def add(self, ctx, *name):
@@ -56,7 +55,7 @@ class Music(commands.Cog):
             'url': url
         }
         self.add = record
-        db[str(ctx.guild.id)].insert_one(record)
+        self.db[str(ctx.guild.id)].insert_one(record)
         await ctx.send(f'Added {url}')
 
     @commands.command(brief='Plays song', description='Will play all songs in the queue')
@@ -66,7 +65,7 @@ class Music(commands.Cog):
             return await ctx.reply('Not in voice channel')
         if self.place:
             return await ctx.reply('Already playing song')
-        self.queue = [song for song in db[str(ctx.guild.id)].find()]
+        self.queue = [song for song in self.db[str(ctx.guild.id)].find()]
         self.add = None
         self.place = 0
         while True:
@@ -135,7 +134,7 @@ class Music(commands.Cog):
 
     @commands.command(brief='Show queue', description='Show queue')
     async def queue(self, ctx):
-        rows = [row for row in db[str(ctx.guild.id)].find()]
+        rows = [row for row in self.db[str(ctx.guild.id)].find()]
         if not rows:
             await ctx.send('No songs in queue')
         for row in rows:
@@ -143,7 +142,7 @@ class Music(commands.Cog):
 
     @commands.command(brief='Move video in queue', description='!mv (beginning place of video) (end place of video)')
     async def mv(self, ctx, beginning: str, end: str):
-        collection = db[str(ctx.guild.id)]
+        collection = self.db[str(ctx.guild.id)]
         rows = [row for row in collection.find()]
         collection.delete_many({})
         if beginning == 'top':
@@ -192,7 +191,7 @@ class Music(commands.Cog):
 
     @commands.command(brief='Removes song', description='Removes the index of the song in queue')
     async def remove(self, ctx, index: str):
-        collection = db[str(ctx.guild.id)]
+        collection = self.db[str(ctx.guild.id)]
         rows = [row for row in collection.find()]
         if index == 'top':
             index: int = 1
@@ -227,7 +226,7 @@ class Music(commands.Cog):
 
     @commands.command(brief='Removes all songs in queue', description='Removes all songs in queue')
     async def removeall(self, ctx) -> None:
-        db[str(ctx.guild.id)].delete_many({})
+        self.db[str(ctx.guild.id)].delete_many({})
         await ctx.send('Removed all')
 
     @commands.command(brief='Show status of video', description='Shows whether the video is playing or is paused')
@@ -270,7 +269,7 @@ class Music(commands.Cog):
                 artist, title = video
         else:
             artist, title = author_song.split(" | ")
-        song_lyrics = api.search_song(f'{artist} {title}')
+        song_lyrics = self.api.search_song(f'{artist} {title}')
         if song_lyrics:
             for line in song_lyrics.lyrics.split('\n'):
                 if line:

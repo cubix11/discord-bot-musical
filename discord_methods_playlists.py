@@ -5,19 +5,16 @@ from methods import getTitle
 from discord.ext import commands
 from db import client
 import pymongo
-db = client['discordbot_playlists']
-playlist_data_db = client['discordbot_data']['playlist_data']
-queue = client['discordbot_queues']
 
 
-def checkName(name: str):
+def checkName(name: str, db):
     playlists = db.list_collection_names()
     if name in playlists:
         return False
     return True
 
 
-async def checkUser(ctx, name, message):
+async def checkUser(ctx, name, playlist_data_db, message):
     if not playlist_data_db.find_one({'name': name})['author_id'] == str(ctx.author.id):
         await ctx.reply(message)
         return True
@@ -28,18 +25,21 @@ class Playlist(commands.Cog):
         self.bot = bot
         self.playlist_name = None
         self.collection = None
+        self.db = client['discordbot_playlists']
+        self.playlist_data_db = client['discordbot_data']['playlist_data']
+        self.queue = client['discordbot_queues']
 
     @commands.command(brief='Set current playlist',
                       description='Set current playlist so that you don\'t have to keep saying playlist name in playlist commands')
     async def pset(self, ctx, *playlist_name):
         playlist_name = ' '.join(playlist_name)
-        if checkName(playlist_name):
+        if checkName(playlist_name, self.db):
             return await ctx.reply('No playlist with that name')
-        playlist = playlist_data_db.find_one({'name': playlist_name})
+        playlist = self.playlist_data_db.find_one({'name': playlist_name})
         if (not playlist['server_id'] == str(ctx.guild.id)) and playlist['private']:
             return await ctx.reply('No playlist with that name')
         self.playlist_name = playlist_name
-        self.collection: pymongo.collection = db[playlist_name]
+        self.collection: pymongo.collection = self.db[playlist_name]
         await ctx.send(f'Changed playlist to {playlist_name}')
 
     @commands.command(brief='Create playlist',
@@ -50,19 +50,19 @@ class Playlist(commands.Cog):
         except ValueError:
             return await ctx.reply('Private value can only be 0 (public) or 1 (private)')
         playlist_name = ' '.join(playlist_name)
-        if not checkName(playlist_name):
+        if not checkName(playlist_name, self.db):
             return await ctx.reply('Already have playlist with same name')
         if not playlist_name:
             return await ctx.reply('Playlist name cannot be empty')
-        db.create_collection(playlist_name)
-        playlist_data_db.insert_one({
+        self.db.create_collection(playlist_name)
+        self.playlist_data_db.insert_one({
             'name': playlist_name,
             'private': private,
             'author_id': str(ctx.author.id),
             'server_id': str(ctx.guild.id)
         })
         self.playlist_name = playlist_name
-        self.collection: pymongo.collection = db[playlist_name]
+        self.collection: pymongo.collection = self.db[playlist_name]
         if private:
             await ctx.send(f'Created private playlist {playlist_name}')
         else:
@@ -73,9 +73,9 @@ class Playlist(commands.Cog):
     async def padd(self, ctx, *name):
         if not self.playlist_name:
             return await ctx.reply('Set the playlist name with !pset <playlist name>')
-        if checkName(self.playlist_name):
+        if checkName(self.playlist_name, self.db):
             return await ctx.reply('No playlist with that name')
-        if await checkUser(ctx, self.playlist_name, 'You are not the owner of the playlist, you cannot add to it'):
+        if await checkUser(ctx, self.playlist_name, self.playlist_data_db, 'You are not the owner of the playlist, you cannot add to it'):
             return
         name = ' '.join(name)
         if not name:
@@ -112,7 +112,7 @@ class Playlist(commands.Cog):
     async def premove(self, ctx, index):
         if not self.playlist_name:
             return await ctx.reply('Set the playlist name with !pset <playlist name>')
-        if await checkUser(ctx, self.playlist_name, 'You are not the owner, so you cannot remove from it'):
+        if await checkUser(ctx, self.playlist_name, self.playlist_data_db, 'You are not the owner, so you cannot remove from it'):
             return
         result = [record for record in self.collection.find()]
         if index == 'top':
@@ -137,7 +137,7 @@ class Playlist(commands.Cog):
     async def premoveall(self, ctx):
         if not self.playlist_name:
             return await ctx.reply('Set the playlist name with !pset <playlist name>')
-        if await checkUser(ctx, self.playlist_name, 'You are not the owner, so you cannot remove from it'):
+        if await checkUser(ctx, self.playlist_name, self.playlist_data_db, 'You are not the owner, so you cannot remove from it'):
             return
         count = len([record for record in self.collection.find()])
         self.collection.delete_many({})
@@ -148,7 +148,7 @@ class Playlist(commands.Cog):
     async def pmove(self, ctx, begin, end):
         if not self.playlist_name:
             return await ctx.reply('Set the playlist name with !pset <playlist name>')
-        if await checkUser(ctx, self.playlist_name, 'You are not the owner, so you cannot move around videos'):
+        if await checkUser(ctx, self.playlist_name, self.playlist_data_db, 'You are not the owner, so you cannot move around videos'):
             return
         res = [record for record in self.collection.find()]
         if begin == 'top':
@@ -184,12 +184,12 @@ class Playlist(commands.Cog):
         name = ' '.join(name)
         if not name:
             return await ctx.reply('Playlist name cannot be empty')
-        if checkName(name):
+        if checkName(name, self.db):
             return await ctx.reply(f'{name} is not a playlist')
-        if await checkUser(ctx, name, 'You are not the owner of the playlist, so you cannot delete the playlist'):
+        if await checkUser(ctx, name, self.playlist_data_db, 'You are not the owner of the playlist, so you cannot delete the playlist'):
             return
-        db[name].drop()
-        playlist_data_db.delete_one({'name': name})
+        self.db[name].drop()
+        self.playlist_data_db.delete_one({'name': name})
         if name == self.playlist_name:
             self.collection = None
             self.playlist_name = None
@@ -209,7 +209,7 @@ class Playlist(commands.Cog):
 
     @commands.command(brief='Show playlists', description='Show playlists')
     async def playlists(self, ctx):
-        collections = [collection for collection in playlist_data_db.find() if(collection['private'] is False or (
+        collections = [collection for collection in self.playlist_data_db.find() if(collection['private'] is False or (
             collection['private'] is True and collection['server_id'] == str(ctx.guild.id)))]
         if collections:
             await ctx.send('Playlists:')
@@ -222,16 +222,16 @@ class Playlist(commands.Cog):
         new_name = ' '.join(new_name)
         if not self.playlist_name:
             return await ctx.reply('Set the playlist name with !pset <playlist name>')
-        if await checkUser(ctx, self.playlist_name, 'You are not the owner of the playlist, so you cannot rename it'):
+        if await checkUser(ctx, self.playlist_name, self.playlist_data_db, 'You are not the owner of the playlist, so you cannot rename it'):
             return
         if new_name == self.playlist_name:
             return await ctx.reply('You are not changing the name of the playlist')
-        if new_name in db.list_collection_names():
+        if new_name in self.db.list_collection_names():
             return await ctx.reply('Name is already taken by another playlist, or there is another private playlist in another server. Use !playlists to which ones are taken')
         if new_name == 'playlist_data':
             return await ctx.reply('Name is forbidden. Please choose a different one.')
         self.collection.rename(new_name)
-        playlist_data_db.update_one({'name': self.playlist_name}, {
+        self.playlist_data_db.update_one({'name': self.playlist_name}, {
             '$set': {'name': new_name}})
         await ctx.send(f'Renamed playlist {self.playlist_name} to {new_name}')
         self.playlist_name = new_name
@@ -240,9 +240,9 @@ class Playlist(commands.Cog):
     async def save(self, ctx):
         if not self.playlist_name:
             return await ctx.reply('Set the playlist name with !pset <playlist name>')
-        if await checkUser(ctx, self.playlist_name, 'You are not the owner of the playlist, so you cannot save songs to it'):
+        if await checkUser(ctx, self.playlist_name, self.playlist_data_db, 'You are not the owner of the playlist, so you cannot save songs to it'):
             return
-        collection = queue[str(ctx.message.guild.id)]
+        collection = self.queue[str(ctx.message.guild.id)]
         songs = [i for i in collection.find()]
         self.collection.delete_many({})
         self.collection.insert_many(songs)

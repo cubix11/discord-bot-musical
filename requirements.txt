@@ -1,9 +1,20 @@
-dnspython==2.1.0
-discord.py==1.6.0
-PyNaCl==1.4.0
-youtube_dl==2021.3.3
-youtube_search==2.1.0
-youtube_title_parse==1.0.0
-lyricsgenius==3.0.0
-PyMongo==3.11.3
-emoji==1.2.0
+# For MongoDB
+dnspython
+# Discord
+discord.py
+# Voice activity
+PyNaCl
+# Get mp3 link for video
+youtube_dl
+# Search for youtube videos
+youtube_search
+# Parse title of youtube video
+youtube_title_parse
+# Get lyrics
+lyricsgenius
+# MongoDB
+PyMongo
+# To convert emoji to :emoji_name:
+emoji
+# Check for NSFW content
+nudenet
