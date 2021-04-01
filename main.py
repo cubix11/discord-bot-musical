@@ -1,7 +1,12 @@
 import asyncio
 from time import sleep
 from typing import List
+from discord.activity import Activity
+from discord.embeds import Embed
+from discord.enums import ActivityType
 from discord.ext import commands
+from discord.guild import Guild
+from discord.message import Message
 from env import env
 import discord
 import sys
@@ -23,7 +28,7 @@ Some important commands are !queue (to show queue), !add <search term or youtube
 !remove <index of song> (remove song from queue), and !mv <begin> <end> (move songs around in queue).
 For all the commands, run the command !help
 '''
-embed = discord.Embed(title='Musical Discord Bot', description=description)
+embed = Embed(title='Musical Discord Bot', description=description)
 embed.add_field(name='Import Commands', value=important_commands, inline=False)
 # Print out which type of bot is being run
 if sys.argv[1] == 'dev':
@@ -34,7 +39,7 @@ else:
 # Get the prefix for each message
 
 
-def get_prefix(bot: commands.Bot, message: discord.Message):
+def get_prefix(bot: commands.Bot, message: Message):
     try:
         return prefixes.find_one({'id': str(message.guild.id)})['prefix']
     except:
@@ -54,16 +59,16 @@ for extension in startup_extensions:
 
 
 @myBot.event
-async def on_guild_join(guild: discord.Guild):
+async def on_guild_join(guild: Guild):
     prefixes.insert_one({
         'id': str(guild.id),
         'prefix': '!'
     })
     server_count = len(myBot.guilds)
     if server_count == 1:
-        await myBot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name=f'{server_count} server'))
+        await myBot.change_presence(activity=Activity(type=ActivityType.watching, name=f'{server_count} server'))
     else:
-        await myBot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name=f'{server_count} servers'))
+        await myBot.change_presence(activity=Activity(type=ActivityType.watching, name=f'{server_count} servers'))
     for channel in guild.text_channels:
         if channel.permissions_for(guild.me):
             await channel.send(embed=embed)
@@ -73,15 +78,15 @@ async def on_guild_join(guild: discord.Guild):
 
 
 @myBot.event
-async def on_guild_remove(guild: discord.Guild):
+async def on_guild_remove(guild: Guild):
     prefixes.delete_one({
         'id': str(guild.id)
     })
     server_count = len(myBot.guilds)
     if server_count == 1:
-        await myBot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name=f'{server_count} server'))
+        await myBot.change_presence(activity=Activity(type=ActivityType.watching, name=f'{server_count} server'))
     else:
-        await myBot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name=f'{server_count} servers'))
+        await myBot.change_presence(activity=Activity(type=ActivityType.watching, name=f'{server_count} servers'))
 
 # Prefix command to change prefix
 
@@ -91,9 +96,9 @@ async def on_ready():
     while True:
         server_count = len(myBot.guilds)
         if server_count == 1:
-            await myBot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name=f'{server_count} server'))
+            await myBot.change_presence(activity=Activity(type=ActivityType.watching, name=f'{server_count} server'))
         else:
-            await myBot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name=f'{server_count} servers'))
+            await myBot.change_presence(activity=Activity(type=ActivityType.watching, name=f'{server_count} servers'))
         await asyncio.sleep(300)
 
 
@@ -111,5 +116,16 @@ async def prefix(ctx, *new_prefix):
         }
     })
     await ctx.send(f'Prefix has been changed to {new_prefix}')
+
+
+@myBot.event
+async def on_message(msg: Message):
+    await myBot.process_commands(msg)
+    if msg.author == myBot.user:
+        return
+    if myBot.user.mentioned_in(msg) and not msg.mention_everyone:
+        prefix = prefixes.find_one({'id': str(msg.guild.id)})
+        await msg.reply('The current prefix is {prefix}. You can change it with {prefix}prefix <new prefix>'.format(prefix=prefix['prefix']))
+
 # Run discord bot with token
 myBot.run(TOKEN)
