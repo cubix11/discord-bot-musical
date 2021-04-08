@@ -2,7 +2,6 @@ from methods import getTitle
 from discord.ext import commands
 from youtube_search import YoutubeSearch
 from youtube_dl import YoutubeDL
-import csv
 import emoji
 from discord import utils
 import discord
@@ -48,15 +47,16 @@ class Music(commands.Cog):
                 results = results[0]['url_suffix']
             except KeyError:
                 return await ctx.reply('Sorry, but something has gone wrong when searching youtube. Please try the command again')
-        url = f'https://youtube.com{results}'
-        title = getTitle(url)
+            url = f'https://youtube.com{results}'
+        data = getTitle(url)
         record = {
-            'name': emoji.demojize(title).encode('ascii', 'ignore').decode('ascii'),
-            'url': url
+            'name': emoji.demojize(data['title']).encode('ascii', 'ignore').decode('ascii'),
+            'url': url,
+            'author': data['author_name']
         }
         self.add = record
         self.db[str(ctx.guild.id)].insert_one(record)
-        await ctx.send(f'Added {url}')
+        await ctx.send('Added: {name} by {author}'.format(name=data['title'], author=data['author_name']))
 
     @commands.command(brief='Plays song', description='Will play all songs in the queue')
     async def play(self, ctx):
@@ -138,7 +138,7 @@ class Music(commands.Cog):
         if not rows:
             await ctx.send('No songs in queue')
         for row in rows:
-            await ctx.send(row['url'])
+            await ctx.send(row['name'] + ' by ' + row['author'])
 
     @commands.command(brief='Move video in queue', description='!mv (beginning place of video) (end place of video)')
     async def mv(self, ctx, beginning: str, end: str):

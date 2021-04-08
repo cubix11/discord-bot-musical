@@ -18,3 +18,7 @@ PyMongo
 emoji
 # Check for NSFW content
 nudenet
+# Pafy to get thumbnail of video
+pafy
+# Download thumbnail
+requests

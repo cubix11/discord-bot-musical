@@ -1,23 +1,10 @@
 import csv
 import emoji
 from youtube_search import YoutubeSearch
-from methods import getTitle
+from methods import getTitle, checkName, checkUser
 from discord.ext import commands
 from db import client
 import pymongo
-
-
-def checkName(name: str, db):
-    playlists = db.list_collection_names()
-    if name in playlists:
-        return False
-    return True
-
-
-async def checkUser(ctx, name, playlist_data_db, message):
-    if not playlist_data_db.find_one({'name': name})['author_id'] == str(ctx.author.id):
-        await ctx.reply(message)
-        return True
 
 
 class Playlist(commands.Cog):
@@ -88,13 +75,14 @@ class Playlist(commands.Cog):
             results = YoutubeSearch(name, max_results=1).to_dict()[
                 0]['url_suffix']
             url = f'https://youtube.com{results}'
-        title = getTitle(url)
+        data = getTitle(url)
         csv_record = {
-            'name': emoji.demojize(title).encode('ascii', 'ignore').decode('ascii'),
-            'url': url
+            'name': emoji.demojize(data['title']).encode('ascii', 'ignore').decode('ascii'),
+            'url': url,
+            'author': data['author_name']
         }
         self.collection.insert_one(csv_record)
-        await ctx.send('Added {}'.format(csv_record['url']))
+        await ctx.send('Added: {name} by {author}'.format(name=data['title'], author=data['author_name']))
 
     @commands.command(brief='Show queue of playlist', description='Show queue of playlist in order of playing order')
     async def pqueue(self, ctx):
@@ -105,7 +93,7 @@ class Playlist(commands.Cog):
             return await ctx.send(f'No videos in {self.playlist_name}')
         await ctx.send(f'Showing videos from playlist {self.playlist_name}')
         for record in records:
-            await ctx.send(record['url'])
+            await ctx.send(record['name'] + ' by ' + record['author'])
 
     @commands.command(brief='Remove video from playlist',
                       description='Remove ONE video from playlist. Enter place of video as argument')
@@ -199,15 +187,14 @@ class Playlist(commands.Cog):
     async def load(self, ctx):
         if not self.playlist_name:
             return await ctx.reply('Set the playlist name with !pset <playlist name>')
-        result = [[record['name'], record['url']]
-                  for record in self.collection.find()]
-        print(result)
-        with open(f'{ctx.message.guild.id}.csv', 'a+', newline='\n') as csvfile:
-            writer = csv.writer(csvfile)
-            writer.writerows(result)
-            await ctx.send(f'Loaded {len(result)} songs.')
+        records = [record for record in self.collection.find()]
+        guild_id = ctx.guild.id
+        collection = client['discordbot_queues'][str(guild_id)]
+        collection.delete_many({})
+        collection.insert_many(records)
+        await ctx.send(f'Loaded data from playlist {self.playlist_name} to queue.')
 
-    @commands.command(brief='Show playlists', description='Show playlists')
+    @ commands.command(brief='Show playlists', description='Show playlists')
     async def playlists(self, ctx):
         collections = [collection for collection in self.playlist_data_db.find() if(collection['private'] is False or (
             collection['private'] is True and collection['server_id'] == str(ctx.guild.id)))]
@@ -217,7 +204,7 @@ class Playlist(commands.Cog):
             await ctx.send('No playlists')
         [await ctx.send('{name} - {public}'.format(name=collection['name'], public='private' if collection['private'] else 'public')) for collection in collections]
 
-    @commands.command(brief='Rename playlist', description='Rename playlist')
+    @ commands.command(brief='Rename playlist', description='Rename playlist')
     async def prename(self, ctx, *new_name):
         new_name = ' '.join(new_name)
         if not self.playlist_name:
@@ -236,7 +223,7 @@ class Playlist(commands.Cog):
         await ctx.send(f'Renamed playlist {self.playlist_name} to {new_name}')
         self.playlist_name = new_name
 
-    @commands.command(brief='Save current queue to the playlist', description='Saves current queue to the playlist')
+    @ commands.command(brief='Save current queue to the playlist', description='Saves current queue to the playlist')
     async def save(self, ctx):
         if not self.playlist_name:
             return await ctx.reply('Set the playlist name with !pset <playlist name>')
@@ -248,7 +235,7 @@ class Playlist(commands.Cog):
         self.collection.insert_many(songs)
         await ctx.send(f'Saved data to playlist {self.playlist_name}')
 
-    @commands.command(brief='Get the current playlist', description='Gets the current playlist')
+    @ commands.command(brief='Get the current playlist', description='Gets the current playlist')
     async def playlist(self, ctx):
         if self.playlist_name:
             await ctx.send(f'Current playlist is {self.playlist_name}')
