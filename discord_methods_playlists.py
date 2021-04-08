@@ -190,7 +190,6 @@ class Playlist(commands.Cog):
         records = [record for record in self.collection.find()]
         guild_id = ctx.guild.id
         collection = client['discordbot_queues'][str(guild_id)]
-        collection.delete_many({})
         collection.insert_many(records)
         await ctx.send(f'Loaded data from playlist {self.playlist_name} to queue.')
 
